@@ -11,6 +11,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Token del bot
+TOKEN = "8862378629:AAEZi9fO7NFjlaOvjW1Ko08I6nVly4WvYAo"
+
 # Crear directorio para descargas si no existe
 if not os.path.exists('downloads'):
     os.makedirs('downloads')
@@ -101,14 +104,6 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def main() -> None:
     """Inicia el bot."""
-    # Obtener el token del bot desde variables de entorno
-    TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-    
-    if not TOKEN:
-        print("❌ Error: No se encontró TELEGRAM_BOT_TOKEN en las variables de entorno")
-        print("Por favor, establece la variable TELEGRAM_BOT_TOKEN con tu token de Telegram")
-        return
-    
     # Crear la aplicación
     application = Application.builder().token(TOKEN).build()
     
