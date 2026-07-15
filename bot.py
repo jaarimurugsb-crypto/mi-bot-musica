@@ -76,9 +76,18 @@ async def main():
     
     logger.info("Bot iniciado")
     
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
+    async with app:
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        logger.info("Bot escuchando mensajes...")
+        print("✅ Bot Online - Escuchando mensajes")
+        
+        # Mantener el bot corriendo
+        try:
+            await asyncio.Event().wait()
+        except KeyboardInterrupt:
+            pass
 
 if __name__ == '__main__':
     asyncio.run(main())
