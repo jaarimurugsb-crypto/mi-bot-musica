@@ -1,0 +1,16 @@
+# Netscape HTTP Cookie File
+# This is a generated file!  Do not edit.
+
+.youtube.com	TRUE	/	TRUE	9999999999	VISITOR_INFO1_LIVE	dummy_visitor_info
+.youtube.com	TRUE	/	TRUE	9999999999	PREF	dummy_pref_data
+.youtube.com	TRUE	/	TRUE	9999999999	LOGIN_INFO	dummy_login_info
+.youtube.com	TRUE	/	TRUE	9999999999	__Secure-1PAPISID	dummy_api_sid
+.youtube.com	TRUE	/	TRUE	9999999999	__Secure-3PAPISID	dummy_secure_api_sid
+.youtube.com	TRUE	/	TRUE	9999999999	SAPISID	dummy_sapi_sid
+.youtube.com	TRUE	/	TRUE	9999999999	__Secure-1PSID	dummy_secure_psid
+.youtube.com	TRUE	/	TRUE	9999999999	__Secure-3PSID	dummy_secure_psid_3
+.youtube.com	TRUE	/	TRUE	9999999999	SID	dummy_sid
+.youtube.com	TRUE	/	TRUE	9999999999	HSID	dummy_hsid
+.youtube.com	TRUE	/	TRUE	9999999999	SSID	dummy_ssid
+.youtube.com	TRUE	/	TRUE	9999999999	YSC	dummy_ysc
+.youtube.com	TRUE	/	TRUE	9999999999	GPS	dummy_gps
