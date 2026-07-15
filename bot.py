@@ -3,7 +3,6 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from yt_dlp import YoutubeDL
 import os
-import time
 import asyncio
 
 # Configurar logging
@@ -20,9 +19,9 @@ TOKEN = "8862378629:AAEZi9fO7NFjlaOvjW1Ko08I6nVly4WvYAo"
 if not os.path.exists('downloads'):
     os.makedirs('downloads')
 
-# Función para descargar música con reintentos
+# Función para descargar música con reintentos y cookies
 async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Descarga música de YouTube con reintentos automáticos."""
+    """Descarga música de YouTube con reintentos automáticos y cookies."""
     
     if not context.args:
         await update.message.reply_text(
@@ -48,7 +47,7 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             intento += 1
             logger.info(f"Intento {intento}/{max_reintentos} para descargar: {url}")
             
-            # Configurar yt-dlp con opciones para evitar bloqueos de YouTube
+            # Configurar yt-dlp con opciones avanzadas para evitar bloqueos
             ydl_opts = {
                 'format': 'bestaudio/best',
                 'postprocessors': [{
@@ -61,15 +60,28 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 'no_warnings': False,
                 'socket_timeout': 30,
                 'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept-Language': 'es-ES,es;q=0.9',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 },
                 'extractor_args': {
                     'youtube': {
                         'player_client': ['web'],
+                        'player_skip': ['js', 'config'],
                     }
                 },
-                'retries': 5,
+                'retries': 10,
+                'skip_unavailable_fragments': True,
+                'fragment_retries': 10,
+                'socket_timeout': 30,
+                'geo_bypass': True,
+                'geo_bypass_country': 'US',
             }
+            
+            # Intentar usar cookies si existen
+            if os.path.exists('cookies.txt'):
+                ydl_opts['cookiefile'] = 'cookies.txt'
+                logger.info("Usando cookies.txt")
             
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -91,7 +103,8 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                     )
                 
                 # Eliminar archivo local después de enviarlo
-                os.remove(mp3_filename)
+                if os.path.exists(mp3_filename):
+                    os.remove(mp3_filename)
                 logger.info(f"Descarga exitosa: {info.get('title', 'Desconocido')}")
                 return
             
@@ -102,9 +115,9 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             # Si es error de "Too Many Requests", esperar y reintentar
             if "429" in error_str or "Too Many Requests" in error_str:
                 if intento < max_reintentos:
-                    espera = 10 * intento  # Esperar 10, 20, 30 segundos
+                    espera = 20 * intento  # Esperar 20, 40, 60 segundos
                     await update.message.reply_text(
-                        f"⏳ YouTube nos está limitando. Esperando {espera} segundos antes de reintentar...\n"
+                        f"⏳ YouTube nos está limitando. Esperando {espera} segundos...\n"
                         f"Intento {intento}/{max_reintentos}"
                     )
                     await asyncio.sleep(espera)
@@ -119,7 +132,7 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             # Si es error de autenticación
             elif "Sign in to confirm" in error_str or "bot" in error_str.lower():
                 if intento < max_reintentos:
-                    espera = 15 * intento
+                    espera = 20 * intento
                     await update.message.reply_text(
                         f"⏳ YouTube detectó automatización. Esperando {espera} segundos...\n"
                         f"Intento {intento}/{max_reintentos}"
@@ -129,7 +142,8 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 else:
                     await update.message.reply_text(
                         "❌ YouTube detecta automatización en este servidor.\n"
-                        "Intenta con un video diferente o más tarde."
+                        "Intenta con un video diferente o más tarde.\n"
+                        "Si tienes cookies de YouTube, comparte el archivo cookies.txt"
                     )
                     return
             
@@ -137,15 +151,15 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             else:
                 if intento < max_reintentos:
                     await update.message.reply_text(
-                        f"❌ Error en intento {intento}: {error_str[:50]}...\n"
-                        f"Reintentando..."
+                        f"❌ Error: {error_str[:80]}...\n"
+                        f"Reintentando (intento {intento}/{max_reintentos})..."
                     )
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(10)
                     continue
                 else:
                     await update.message.reply_text(
-                        f"❌ Error al descargar después de {max_reintentos} intentos.\n"
-                        f"Error: {error_str[:100]}"
+                        f"❌ Error después de {max_reintentos} intentos.\n"
+                        f"Error: {error_str[:150]}"
                     )
                     return
 
@@ -155,7 +169,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "🎵 ¡Bienvenido al Bot de Descargas de Música!\n\n"
         "Comandos disponibles:\n"
         "/descargar <URL> - Descargar música de YouTube\n"
-        "/ayuda - Mostrar este mensaje\n\n"
+        "/ayuda - Mostrar este mensaje\n"
+        "/estado - Ver estado del bot\n\n"
         "Ejemplo: /descargar https://www.youtube.com/watch?v=..."
     )
 
@@ -171,6 +186,19 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/descargar https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     )
 
+async def estado(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Comando /estado - Ver estado del bot."""
+    cookies_status = "✅ Cookies disponibles" if os.path.exists('cookies.txt') else "❌ Sin cookies"
+    ffmpeg_path = "✅ FFmpeg disponible" if os.path.exists('/usr/bin/ffmpeg') else "❌ FFmpeg no encontrado"
+    
+    await update.message.reply_text(
+        f"🤖 Estado del Bot:\n\n"
+        f"Estado: ✅ En línea\n"
+        f"{cookies_status}\n"
+        f"{ffmpeg_path}\n"
+        f"Versión: 2.0"
+    )
+
 def main() -> None:
     """Inicia el bot."""
     try:
@@ -180,10 +208,12 @@ def main() -> None:
         # Agregar manejadores de comandos
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("ayuda", ayuda))
+        application.add_handler(CommandHandler("estado", estado))
         application.add_handler(CommandHandler("descargar", descargar_musica))
         
         # Iniciar el bot
         print("🤖 Bot iniciado y escuchando mensajes...")
+        print("📍 Esperando comandos...")
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
