@@ -39,7 +39,7 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_text("⏳ Descargando música, por favor espera...")
     
     try:
-        # Configurar yt-dlp
+        # Configurar yt-dlp con opciones para evitar bloqueos de YouTube
         ydl_opts = {
             'format': 'bestaudio/best',
             'postprocessors': [{
@@ -50,6 +50,15 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             'outtmpl': 'downloads/%(title)s.%(ext)s',
             'quiet': False,
             'no_warnings': False,
+            'socket_timeout': 30,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            },
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['web'],
+                }
+            }
         }
         
         with YoutubeDL(ydl_opts) as ydl:
@@ -78,7 +87,8 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         logger.error(f"Error al descargar: {str(e)}")
         await update.message.reply_text(
             f"❌ Error al descargar la música.\n"
-            f"Error: {str(e)}"
+            f"Intenta con otro video o después de unos minutos.\n"
+            f"Error: {str(e)[:100]}"
         )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
