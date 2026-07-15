@@ -1,9 +1,13 @@
 import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.error import Conflict, NetworkError
 from yt_dlp import YoutubeDL
 import os
 import asyncio
+import signal
+import sys
+import random
 
 # Configurar logging
 logging.basicConfig(
@@ -15,13 +19,49 @@ logger = logging.getLogger(__name__)
 # Token del bot
 TOKEN = "8862378629:AAEZi9fO7NFjlaOvjW1Ko08I6nVly4WvYAo"
 
+# Lista de proxys
+PROXYS = [
+    "31.59.20.176:6754:kfcqnjuo:mjkj3frp878n",
+    "31.56.127.193:7684:kfcqnjuo:mjkj3frp878n",
+    "45.38.107.97:6014:kfcqnjuo:mjkj3frp878n",
+    "198.105.121.200:6462:kfcqnjuo:mjkj3frp878n",
+    "64.137.96.74:6641:kfcqnjuo:mjkj3frp878n",
+    "198.23.243.226:6361:kfcqnjuo:mjkj3frp878n",
+    "38.154.185.97:6370:kfcqnjuo:mjkj3frp878n",
+    "84.247.60.125:6095:kfcqnjuo:mjkj3frp878n",
+    "142.111.67.146:5611:kfcqnjuo:mjkj3frp878n",
+    "191.96.254.138:6185:kfcqnjuo:mjkj3frp878n",
+]
+
 # Crear directorio para descargas si no existe
 if not os.path.exists('downloads'):
     os.makedirs('downloads')
 
-# Función para descargar música con reintentos y cookies
+# Variable global para la aplicación
+app = None
+
+def signal_handler(sig, frame):
+    """Maneja la señal de interrupción."""
+    logger.info("Bot detenido por señal")
+    if app:
+        app.stop()
+    sys.exit(0)
+
+# Registrar manejador de señales
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+def get_proxy_url(proxy_str):
+    """Convierte formato proxy a URL para yt-dlp."""
+    parts = proxy_str.split(':')
+    if len(parts) == 4:
+        host, port, user, password = parts
+        return f"http://{user}:{password}@{host}:{port}"
+    return None
+
+# Función para descargar música con proxys y reintentos
 async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Descarga música de YouTube con reintentos automáticos y cookies."""
+    """Descarga música de YouTube con proxys rotativos y reintentos."""
     
     if not context.args:
         await update.message.reply_text(
@@ -39,15 +79,20 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     
     await update.message.reply_text("⏳ Descargando música, por favor espera...")
     
-    max_reintentos = 3
+    max_reintentos = len(PROXYS)
     intento = 0
     
     while intento < max_reintentos:
         try:
             intento += 1
-            logger.info(f"Intento {intento}/{max_reintentos} para descargar: {url}")
             
-            # Configurar yt-dlp con opciones avanzadas para evitar bloqueos
+            # Seleccionar proxy aleatorio
+            proxy_str = PROXYS[intento - 1]
+            proxy_url = get_proxy_url(proxy_str)
+            
+            logger.info(f"Intento {intento}/{max_reintentos} - Proxy: {proxy_str.split(':')[0]}")
+            
+            # Configurar yt-dlp con proxy
             ydl_opts = {
                 'format': 'bestaudio/best',
                 'postprocessors': [{
@@ -63,6 +108,7 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept-Language': 'es-ES,es;q=0.9',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Referer': 'https://www.youtube.com/',
                 },
                 'extractor_args': {
                     'youtube': {
@@ -70,13 +116,18 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                         'player_skip': ['js', 'config'],
                     }
                 },
-                'retries': 10,
+                'retries': 5,
                 'skip_unavailable_fragments': True,
-                'fragment_retries': 10,
+                'fragment_retries': 5,
                 'socket_timeout': 30,
                 'geo_bypass': True,
                 'geo_bypass_country': 'US',
             }
+            
+            # Agregar proxy si está disponible
+            if proxy_url:
+                ydl_opts['proxy'] = proxy_url
+                logger.info(f"Usando proxy: {proxy_str.split(':')[0]}")
             
             # Intentar usar cookies si existen
             if os.path.exists('cookies.txt'):
@@ -110,58 +161,22 @@ async def descargar_musica(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             
         except Exception as e:
             error_str = str(e)
-            logger.error(f"Error en intento {intento}: {error_str}")
+            logger.error(f"Error en intento {intento}: {error_str[:100]}")
             
-            # Si es error de "Too Many Requests", esperar y reintentar
-            if "429" in error_str or "Too Many Requests" in error_str:
-                if intento < max_reintentos:
-                    espera = 20 * intento  # Esperar 20, 40, 60 segundos
-                    await update.message.reply_text(
-                        f"⏳ YouTube nos está limitando. Esperando {espera} segundos...\n"
-                        f"Intento {intento}/{max_reintentos}"
-                    )
-                    await asyncio.sleep(espera)
-                    continue
-                else:
-                    await update.message.reply_text(
-                        "❌ YouTube está bloqueando descargas desde este servidor.\n"
-                        "Intenta más tarde o usa una VPN."
-                    )
-                    return
-            
-            # Si es error de autenticación
-            elif "Sign in to confirm" in error_str or "bot" in error_str.lower():
-                if intento < max_reintentos:
-                    espera = 20 * intento
-                    await update.message.reply_text(
-                        f"⏳ YouTube detectó automatización. Esperando {espera} segundos...\n"
-                        f"Intento {intento}/{max_reintentos}"
-                    )
-                    await asyncio.sleep(espera)
-                    continue
-                else:
-                    await update.message.reply_text(
-                        "❌ YouTube detecta automatización en este servidor.\n"
-                        "Intenta con un video diferente o más tarde.\n"
-                        "Si tienes cookies de YouTube, comparte el archivo cookies.txt"
-                    )
-                    return
-            
-            # Otros errores
+            if intento < max_reintentos:
+                espera = 5 * intento
+                await update.message.reply_text(
+                    f"⏳ Proxy {intento} no funcionó. Intentando con proxy {intento + 1}...\n"
+                    f"Esperando {espera} segundos..."
+                )
+                await asyncio.sleep(espera)
+                continue
             else:
-                if intento < max_reintentos:
-                    await update.message.reply_text(
-                        f"❌ Error: {error_str[:80]}...\n"
-                        f"Reintentando (intento {intento}/{max_reintentos})..."
-                    )
-                    await asyncio.sleep(10)
-                    continue
-                else:
-                    await update.message.reply_text(
-                        f"❌ Error después de {max_reintentos} intentos.\n"
-                        f"Error: {error_str[:150]}"
-                    )
-                    return
+                await update.message.reply_text(
+                    f"❌ No se pudo descargar después de intentar todos los proxys ({max_reintentos}).\n"
+                    f"Error: {error_str[:150]}"
+                )
+                return
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Comando /start - Mensaje de bienvenida."""
@@ -189,36 +204,59 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def estado(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Comando /estado - Ver estado del bot."""
     cookies_status = "✅ Cookies disponibles" if os.path.exists('cookies.txt') else "❌ Sin cookies"
-    ffmpeg_path = "✅ FFmpeg disponible" if os.path.exists('/usr/bin/ffmpeg') else "❌ FFmpeg no encontrado"
     
     await update.message.reply_text(
         f"🤖 Estado del Bot:\n\n"
         f"Estado: ✅ En línea\n"
+        f"Proxys activos: {len(PROXYS)}\n"
         f"{cookies_status}\n"
-        f"{ffmpeg_path}\n"
-        f"Versión: 2.0"
+        f"Versión: 4.0 (con proxys)"
     )
 
-def main() -> None:
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Maneja errores de la aplicación."""
+    logger.error(f"Error de la aplicación: {context.error}")
+    if isinstance(context.error, Conflict):
+        logger.error("Error de conflicto: otra instancia está ejecutándose")
+    elif isinstance(context.error, NetworkError):
+        logger.error("Error de red: verificando conexión")
+
+async def main() -> None:
     """Inicia el bot."""
+    global app
+    
     try:
         # Crear la aplicación
-        application = Application.builder().token(TOKEN).build()
+        app = Application.builder().token(TOKEN).build()
         
         # Agregar manejadores de comandos
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("ayuda", ayuda))
-        application.add_handler(CommandHandler("estado", estado))
-        application.add_handler(CommandHandler("descargar", descargar_musica))
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(CommandHandler("ayuda", ayuda))
+        app.add_handler(CommandHandler("estado", estado))
+        app.add_handler(CommandHandler("descargar", descargar_musica))
+        
+        # Agregar manejador de errores
+        app.add_error_handler(error_handler)
         
         # Iniciar el bot
+        logger.info("🤖 Bot iniciado y escuchando mensajes...")
+        logger.info(f"📍 {len(PROXYS)} proxys configurados")
         print("🤖 Bot iniciado y escuchando mensajes...")
+        print(f"📍 {len(PROXYS)} proxys configurados")
         print("📍 Esperando comandos...")
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
         
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES, timeout=10)
+        
+    except Conflict as e:
+        logger.error(f"Error de conflicto: {str(e)}")
+        logger.info("Otra instancia del bot está ejecutándose. Terminando...")
+        sys.exit(1)
     except Exception as e:
         logger.error(f"Error fatal al iniciar el bot: {str(e)}")
         print(f"❌ Error: {str(e)}")
+        sys.exit(1)
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
